@@ -126,6 +126,63 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    *   (look at equation 3.33) http://planning.cs.uiuc.edu/node99.html
    */
 
+  double gauss_norm;
+  gauss_norm = 1 / (2 * M_PI * std_landmark[0] * std_landmark[1]);
+
+  // update weights based on the observations for each particle
+  for (int i = 0; i < num_particles; ++i) {
+
+    // convert observations from vehicle coord to map coord
+    double x_part, y_part, theta_part;
+    vector<LandmarkObs> predictions;
+
+    x_part = particles[i].x;
+    y_part = particles[i].y;
+    theta_part = particles[i].theta;
+
+    for (int j = 0; j < observations.size(); ++j) {
+      double x_obs, y_obs;
+      x_obs = observations[j].x;
+      y_obs = observations[j].y;
+
+      LandmarkObs aPred;
+
+      aPred.x = x_part + cos(theta_part) * x_obs - sin(theta_part) * y_obs;
+      aPred.y = y_part + sin(theta_part) * x_obs + cos(theta_part) * y_obs;
+
+      predictions.push_back(aPred);
+    }
+
+    // associate each observation to it's closest landmark
+    for (int p = 0; p < predictions.size(); ++p) {
+      double min_range = sensor_range;
+      Map::single_landmark_s landmark;
+      for (int m = 0; m < map_landmarks.landmark_list.size(); ++m) {
+        double range = dist(predictions[p].x, predictions[i].y, map_landmarks.landmark_list[m].x_f, map_landmarks.landmark_list[m].y_f);
+        if (range < min_range) {
+          min_range = range;
+          landmark = map_landmarks.landmark_list[m];
+        }
+      }
+
+      particles[i].associations.push_back(landmark.id_i);
+      particles[i].sense_x.push_back(predictions[p].x);
+      particles[i].sense_y.push_back(predictions[p].y);
+    }
+
+    // update weight
+    for (int s = 0; s < particles[i].associations.size(); ++s) {
+      double x_obs = particles[i].sense_x[s];
+      double y_obs = particles[i].sense_y[s];
+      double mu_x = map_landmarks.landmark_list[particles[i].associations[s]].x_f;
+      double mu_y = map_landmarks.landmark_list[particles[i].associations[s]].y_f;
+
+      double exponent = (pow(x_obs - mu_x, 2) / (2 * pow(std_landmark[0], 2)))
+               + (pow(y_obs - mu_y, 2) / (2 * pow(std_landmark[1], 2)));
+    
+      particles[i].weight *= gauss_norm * exp(-exponent);
+    }
+  }
 }
 
 void ParticleFilter::resample() {
