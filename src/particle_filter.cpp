@@ -20,7 +20,6 @@
 
 using std::string;
 using std::vector;
-using std::normal_distribution;
 
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
   /**
@@ -34,10 +33,11 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
   num_particles = 100;  // TODO: Set the number of particles
 
   std::default_random_engine gen;
-  normal_distribution<double> dist_x(x, std[0]);
-  normal_distribution<double> dist_y(y, std[1]);
-  normal_distribution<double> dist_theta(theta, std[2]);
+  std::normal_distribution<double> dist_x(x, std[0]);
+  std::normal_distribution<double> dist_y(y, std[1]);
+  std::normal_distribution<double> dist_theta(theta, std[2]);
 
+  // initialize particles with noisy GPS location
   for (int i = 0; i < num_particles; ++i) {
     Particle aParticle;
     aParticle.id = i;
@@ -47,8 +47,9 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     aParticle.weight = 1.0;
 
     particles.push_back(aParticle);
-    weights.push_back(1.0);
   }
+
+  weights = vector<double>(num_particles, 1.0);
 
   is_initialized = true;
 }
@@ -65,14 +66,13 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
 
   std::default_random_engine gen;
   for (int i = 0; i < num_particles; ++i) {
-    Particle aParticle = particles[i];
-
-    double x_0 = aParticle.x;
-    double y_0 = aParticle.y;
-    double theta_0 = aParticle.theta;
+    double x_0 = particles[i].x;
+    double y_0 = particles[i].y;
+    double theta_0 = particles[i].theta;
 
     double x_f, y_f, theta_f;
 
+    // bicycle motion model
     if (yaw_rate == 0.0) {
       double velocity_change = velocity * delta_t;
       x_f = x_0 + velocity_change * cos(theta_0);
@@ -86,9 +86,10 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
       theta_f = theta_0 + yaw_change;
     }
 
-    normal_distribution<double> dist_x(x_f, std_pos[0]);
-    normal_distribution<double> dist_y(y_f, std_pos[1]);
-    normal_distribution<double> dist_theta(theta_f, std_pos[2]);
+    // add Gaussian motion noise
+    std::normal_distribution<double> dist_x(x_f, std_pos[0]);
+    std::normal_distribution<double> dist_y(y_f, std_pos[1]);
+    std::normal_distribution<double> dist_theta(theta_f, std_pos[2]);
 
     particles[i].x = dist_x(gen);
     particles[i].y = dist_y(gen);
@@ -126,13 +127,14 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    *   (look at equation 3.33) http://planning.cs.uiuc.edu/node99.html
    */
 
+  // multivariate Gaussian normalizer
   double gauss_norm;
-  gauss_norm = 1 / (2 * M_PI * std_landmark[0] * std_landmark[1]);
+  gauss_norm = 1.0 / (2.0 * M_PI * std_landmark[0] * std_landmark[1]);
 
   // update weights based on the observations for each particle
   for (int i = 0; i < num_particles; ++i) {
 
-    // convert observations from vehicle coord to map coord
+    // convert observations from vehicle coordinate to map coordinate
     double x_part, y_part, theta_part;
     vector<LandmarkObs> predictions;
 
@@ -140,7 +142,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     y_part = particles[i].y;
     theta_part = particles[i].theta;
 
-    for (int j = 0; j < observations.size(); ++j) {
+    for (unsigned j = 0; j < observations.size(); ++j) {
       double x_obs, y_obs;
       x_obs = observations[j].x;
       y_obs = observations[j].y;
@@ -154,35 +156,45 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     }
 
     // associate each observation to it's closest landmark
-    for (int p = 0; p < predictions.size(); ++p) {
+    vector<int> landmarks;
+    vector<double> tobs_x;
+    vector<double> tobs_y;
+    for (unsigned p = 0; p < predictions.size(); ++p) {
       double min_range = sensor_range;
-      Map::single_landmark_s landmark;
-      for (int m = 0; m < map_landmarks.landmark_list.size(); ++m) {
-        double range = dist(predictions[p].x, predictions[i].y, map_landmarks.landmark_list[m].x_f, map_landmarks.landmark_list[m].y_f);
+      int landmark_id;
+      for (unsigned m = 0; m < map_landmarks.landmark_list.size(); ++m) {
+        double range = dist(predictions[p].x, predictions[p].y, map_landmarks.landmark_list[m].x_f, map_landmarks.landmark_list[m].y_f);
         if (range < min_range) {
           min_range = range;
-          landmark = map_landmarks.landmark_list[m];
+          landmark_id = map_landmarks.landmark_list[m].id_i;
         }
       }
 
-      particles[i].associations.push_back(landmark.id_i);
-      particles[i].sense_x.push_back(predictions[p].x);
-      particles[i].sense_y.push_back(predictions[p].y);
+      landmarks.push_back(landmark_id);
+      tobs_x.push_back(predictions[p].x);
+      tobs_y.push_back(predictions[p].y);
     }
 
+    particles[i].associations = landmarks;
+    particles[i].sense_x = tobs_x;
+    particles[i].sense_y = tobs_y;
+
     // update weight
-    for (int s = 0; s < particles[i].associations.size(); ++s) {
+    double weight_p = 1.0;
+    for (unsigned s = 0; s < particles[i].associations.size(); ++s) {
       double x_obs = particles[i].sense_x[s];
       double y_obs = particles[i].sense_y[s];
-      double mu_x = map_landmarks.landmark_list[particles[i].associations[s]].x_f;
-      double mu_y = map_landmarks.landmark_list[particles[i].associations[s]].y_f;
+      int landmark_id = particles[i].associations[s];
+      double mu_x = map_landmarks.landmark_list[landmark_id - 1].x_f;
+      double mu_y = map_landmarks.landmark_list[landmark_id - 1].y_f;
 
       double exponent = (pow(x_obs - mu_x, 2) / (2 * pow(std_landmark[0], 2)))
                + (pow(y_obs - mu_y, 2) / (2 * pow(std_landmark[1], 2)));
     
-      particles[i].weight *= gauss_norm * exp(-exponent);
+      weight_p *= gauss_norm * exp(-exponent);
     }
-    weights[i] = particles[i].weight;
+    particles[i].weight = weight_p;
+    weights[i] = weight_p;
   }
 }
 
@@ -197,14 +209,14 @@ void ParticleFilter::resample() {
 
   std::default_random_engine gen;
   std::uniform_int_distribution<int> dist_ind(0, num_particles);
-  std::uniform_real_distribution<double> dist_double(0.0, 1.0);
+  std::uniform_real_distribution<double> dist_0_1(0.0, 1.0);
 
   int index = dist_ind(gen);
   double weight_max = *std::max_element(weights.begin(), weights.end());
   double beta = 0.0;
 
   for (int i = 0; i < num_particles; ++i) {
-    beta += dist_double(gen) * 2.0 * weight_max;
+    beta += dist_0_1(gen) * 2.0 * weight_max;
     while(beta > weights[index]) {
       beta -= weights[index];
       index = (index + 1) % num_particles;
