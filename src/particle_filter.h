@@ -11,6 +11,7 @@
 
 #include <string>
 #include <vector>
+#include <random>
 #include "helper_functions.h"
 
 struct Particle {
@@ -56,16 +57,7 @@ class ParticleFilter {
    */
   void prediction(double delta_t, double std_pos[], double velocity, 
                   double yaw_rate);
-  
-  /**
-   * dataAssociation Finds which observations correspond to which landmarks 
-   *   (likely by using a nearest-neighbors data association).
-   * @param predicted Vector of predicted landmark observations
-   * @param observations Vector of landmark observations
-   */
-  void dataAssociation(std::vector<LandmarkObs> predicted, 
-                       std::vector<LandmarkObs>& observations);
-  
+   
   /**
    * updateWeights Updates the weights for each particle based on the likelihood
    *   of the observed measurements. 
@@ -120,6 +112,9 @@ class ParticleFilter {
   
   // Vector of weights of all particles
   std::vector<double> weights; 
+
+  // random noise engine
+  std::default_random_engine gen;
 };
 
 #endif  // PARTICLE_FILTER_H_

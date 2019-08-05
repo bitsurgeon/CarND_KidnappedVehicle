@@ -26,7 +26,6 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
   // set total number of particles for localization
   num_particles = 100;
 
-  std::default_random_engine gen;
   std::normal_distribution<double> dist_x(x, std[0]);
   std::normal_distribution<double> dist_y(y, std[1]);
   std::normal_distribution<double> dist_theta(theta, std[2]);
@@ -51,8 +50,6 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 void ParticleFilter::prediction(double delta_t, double std_pos[], 
                                 double velocity, double yaw_rate) {
   
-  std::default_random_engine gen;
-
   // predict location for each particles
   for (int i = 0; i < num_particles; ++i) {
     double x_0 = particles[i].x;
@@ -62,7 +59,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
     double x_f, y_f, theta_f;
 
     // bicycle motion model
-    if (yaw_rate == 0.0) {
+    if (fabs(yaw_rate) == 0.0) {
       double velocity_change = velocity * delta_t;
       x_f = x_0 + velocity_change * cos(theta_0);
       y_f = y_0 + velocity_change * sin(theta_0);
@@ -84,19 +81,6 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
     particles[i].y = dist_y(gen);
     particles[i].theta = dist_theta(gen);
   }
-}
-
-void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted, 
-                                     vector<LandmarkObs>& observations) {
-  /**
-   * TODO: Find the predicted measurement that is closest to each 
-   *   observed measurement and assign the observed measurement to this 
-   *   particular landmark.
-   * NOTE: this method will NOT be called by the grading code. But you will 
-   *   probably find it useful to implement this method and use it as a helper 
-   *   during the updateWeights phase.
-   */
-
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
@@ -177,12 +161,10 @@ void ParticleFilter::resample() {
 
   vector<Particle> newParticles;
 
-  std::default_random_engine gen;
-  std::uniform_int_distribution<int> dist_ind(0, num_particles);
   std::uniform_real_distribution<double> dist_0_1(0.0, 1.0);
 
   // resampling with replacement, propotion to the weight of the particles
-  int index = dist_ind(gen);
+  int index = rand() % num_particles;
   double weight_max = *std::max_element(weights.begin(), weights.end());
   double beta = 0.0;
 
